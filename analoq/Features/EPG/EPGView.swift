@@ -28,9 +28,9 @@ private struct EPGLayoutMetrics {
         let readableMinimumWidth = CGFloat(windowHours * 60) * 2.8
         let timelineWidth = max(availableTimelineWidth, readableMinimumWidth)
         let rowHeight = min(84, max(66, overlayHeight * 0.105))
-        let headerHeight = min(54, max(44, rowHeight * 0.68))
+        let headerHeight = min(62, max(50, rowHeight * 0.78))
         let pxPerMinute = timelineWidth / CGFloat(windowHours * 60)
-        let contentBottomPadding: CGFloat = 18
+        let contentBottomPadding: CGFloat = 26
 
         return EPGLayoutMetrics(
             overlayHeight: overlayHeight,
@@ -104,11 +104,6 @@ struct EPGView: View {
     private var headerNextEntry: EPGEntry? {
         guard let entry = headerEntry else { return nil }
         return nextEntry(after: entry)
-    }
-
-    private var headerArtworkURL: URL? {
-        guard let entry = headerEntry else { return nil }
-        return store.artworkURL(path: entry.item.thumb ?? entry.channel.artworkPath, width: 320)
     }
 
     private var displayedChannels: [AnaloqChannel] {
@@ -186,7 +181,6 @@ struct EPGView: View {
                         }
                     }
                     .frame(minWidth: layout.channelColumnWidth + layout.timelineWidth, alignment: .leading)
-                    .padding(.top, 10)
                     .padding(.horizontal, layout.contentHorizontalPadding)
                     .padding(.bottom, layout.contentBottomPadding)
                 }
@@ -209,14 +203,13 @@ struct EPGView: View {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .fill(Color.black.opacity(0.24))
         )
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .tvSurface(cornerRadius: 28)
     }
 
     private func overlayHeader(layout: EPGLayoutMetrics) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 16) {
-                headerArtwork(url: headerArtworkURL)
-
+            HStack(alignment: .top, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Circle()
@@ -335,38 +328,6 @@ struct EPGView: View {
         .frame(minHeight: layout.infoBarHeight, alignment: .top)
     }
 
-    private func headerArtwork(url: URL?) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-
-            if let url {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(16 / 9, contentMode: .fill)
-                    default:
-                        Image(systemName: "play.tv.fill")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(TVTheme.textSecondary)
-                    }
-                }
-            } else {
-                Image(systemName: "play.tv.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(TVTheme.textSecondary)
-            }
-        }
-        .frame(width: 88, height: 68)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-    }
-
     private var headerEyebrowText: String {
         guard let entry = headerEntry else { return L10n.tr("epg.eyebrow.default") }
         let state = headerStateText(for: entry)
@@ -449,19 +410,26 @@ struct EPGView: View {
 
     private func timelineHeader(layout: EPGLayoutMetrics) -> some View {
         let timeStep = layout.pxPerMinute >= 3.8 ? 30 : 60
-        let labelWidth: CGFloat = 72
+        let labelWidth: CGFloat = 78
+        let headerBackground = LinearGradient(
+            colors: [Color.black.opacity(0.46), Color.black.opacity(0.34)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
 
         return HStack(spacing: 0) {
-            Text(L10n.tr("epg.timeline.channels"))
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                .foregroundStyle(TVTheme.textSecondary)
-                .frame(width: layout.channelColumnWidth, alignment: .leading)
-                .padding(.horizontal, 12)
-                .frame(height: layout.headerHeight)
-                .background(Color.black.opacity(0.28))
+            ZStack(alignment: .leading) {
+                headerBackground
+
+                Text(L10n.tr("epg.timeline.channels"))
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundStyle(TVTheme.textSecondary)
+                    .padding(.horizontal, 12)
+            }
+            .frame(width: layout.channelColumnWidth, height: layout.headerHeight)
 
             ZStack(alignment: .topLeading) {
-                Rectangle().fill(Color.black.opacity(0.28))
+                headerBackground
 
                 ForEach(Array(stride(from: 0, through: windowHours * 60, by: timeStep)), id: \.self) { minute in
                     let date = timelineStart.addingTimeInterval(TimeInterval(minute * 60))
@@ -469,27 +437,35 @@ struct EPGView: View {
                     let isTerminalMarker = minute == windowHours * 60
 
                     Rectangle()
-                        .fill(TVTheme.border.opacity(0.5))
+                        .fill(TVTheme.border.opacity(isTerminalMarker ? 0.48 : 0.34))
                         .frame(width: 1, height: layout.headerHeight)
                         .offset(x: x)
 
                     Text(date.formatted(.dateTime.hour().minute()))
                         .font(.system(size: 13, weight: .medium, design: .monospaced))
-                        .foregroundStyle(TVTheme.textSecondary)
-                        .frame(width: labelWidth, alignment: isTerminalMarker ? .trailing : .leading)
-                        .offset(
-                            x: timeLabelOffset(for: minute, layout: layout, labelWidth: labelWidth),
-                            y: 14
+                        .foregroundStyle(TVTheme.textPrimary.opacity(0.82))
+                        .frame(
+                            width: labelWidth,
+                            height: layout.headerHeight,
+                            alignment: isTerminalMarker ? .trailing : .leading
                         )
+                        .offset(x: timeLabelOffset(for: minute, layout: layout, labelWidth: labelWidth))
                 }
             }
             .frame(width: layout.timelineWidth, height: layout.headerHeight)
+        }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.white.opacity(0.05))
+                .frame(height: 1)
         }
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(TVTheme.border.opacity(0.35))
                 .frame(height: 1)
         }
+        .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
+        .zIndex(1)
     }
 
     private func timeLabelOffset(
@@ -603,6 +579,17 @@ struct EPGView: View {
                     case .gap:
                         Color.clear.frame(width: segment.width)
                     case .entry(let entry):
+                        #if os(tvOS)
+                        ProgramCell(
+                            entry: entry,
+                            isSelected: false,
+                            isFocused: false,
+                            compact: segment.width < 170
+                        )
+                        .frame(width: max(8, segment.width - 6), height: layout.rowHeight - 12)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 6)
+                        #else
                         let focusTarget = FocusTarget.program(entry.id)
 
                         Button {
@@ -621,6 +608,7 @@ struct EPGView: View {
                         .frame(width: max(8, segment.width - 6), height: layout.rowHeight - 12)
                         .padding(.horizontal, 3)
                         .padding(.vertical, 6)
+                        #endif
                     }
                 }
             }
