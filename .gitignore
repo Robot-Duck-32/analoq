@@ -1,0 +1,31 @@
+# Build artifacts
+build/
+dist/
+design/
+
+# Xcode user-specific files
+*.xcuserstate
+xcuserdata/
+*.xcuserdatad/
+*.moved-aside
+*.xccheckout
+
+# Xcode derived data (if placed locally)
+DerivedData/
+*.xcarchive
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# IPA files
+*.ipa
+
+# Build logs
+*.log
+
+# Local repo helpers
+CLEANUP_AGENT_PROMPT.md
+OPTIMIZE_AGENT_PROMPT.md
+ExportOptions.plist
+build_ipa.sh
