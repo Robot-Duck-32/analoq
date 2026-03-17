@@ -7,7 +7,6 @@ Instead of browsing posters and folders, analoq takes the collections you alread
 > [!IMPORTANT]
 > Full Disclosure: This is a 100% 'vibe-coded' project.
 > The goal is to keep it free and open-source.
-> No official App Store release is planned.
 
 ## Highlights
 
@@ -46,7 +45,7 @@ If you want to run the app on your own Apple TV hardware, choose your own team i
 7. While watching live TV:
    - Use `Up` and `Down` to zap between channels.
    - Press `Play/Pause` to show the playback overlay.
-   - Press `Menu` or `Back` to open the guide overlay.
+   - Press `Back` to open the guide overlay.
 8. Inside the guide overlay:
    - Select a channel row to tune immediately.
    - Select a program block to inspect what is on now or next.
