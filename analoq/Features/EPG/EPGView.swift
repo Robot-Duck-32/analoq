@@ -60,6 +60,7 @@ struct EPGView: View {
     @State private var timelineStart = Date.now
     @State private var didInitialScroll = false
     @FocusState private var focusedControl: FocusTarget?
+    @State private var lastFocusedChannelControl: FocusTarget?
 
     private let scheduler = ChannelScheduler()
     private let windowHours = 3
@@ -124,6 +125,10 @@ struct EPGView: View {
         return "\(channels)#\(windowHours)#\(showHiddenChannels)"
     }
 
+    private var displayedChannelIDs: [String] {
+        displayedChannels.map(\.id)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let layout = EPGLayoutMetrics.make(for: proxy.size, windowHours: windowHours)
@@ -149,6 +154,17 @@ struct EPGView: View {
         .task(id: reloadToken) {
             await regenerateEPG()
         }
+        #if os(tvOS)
+        .onAppear { applyDefaultFocusIfNeeded() }
+        .onChange(of: focusedControl) { _, target in
+            guard let target, isChannelRowFocusTarget(target) else { return }
+            lastFocusedChannelControl = target
+        }
+        .onChange(of: displayedChannelIDs) { _, _ in
+            refreshFocusAfterChannelListChange()
+        }
+        .onMoveCommand(perform: handleMoveCommand)
+        #endif
     }
 
     private func guideOverlay(layout: EPGLayoutMetrics) -> some View {
@@ -700,6 +716,13 @@ struct EPGView: View {
         if selectedEntry?.channel.id == channel.id {
             selectedEntry = nil
         }
+        #if os(tvOS)
+        if isNowHidden && showHiddenChannels == false {
+            focusedControl = preferredRowFocusTarget(excluding: channel.id) ?? preferredHeaderFocusTarget
+        } else {
+            focusedControl = .hidden(channel.id)
+        }
+        #endif
     }
 
     private func tuneAndClose(_ channel: AnaloqChannel) {
@@ -727,6 +750,122 @@ struct EPGView: View {
             }
         }
     }
+
+    #if os(tvOS)
+    private var hasHiddenChannels: Bool {
+        !store.hiddenChannelIDs.isEmpty
+    }
+
+    private var preferredHeaderFocusTarget: FocusTarget {
+        hasHiddenChannels ? .toggleHiddenVisibility : .close
+    }
+
+    private func handleMoveCommand(_ direction: MoveCommandDirection) {
+        switch direction {
+        case .up:
+            if let focusedControl, isTopRowFocusTarget(focusedControl) {
+                self.focusedControl = preferredHeaderFocusTarget
+            } else if focusedControl == .close, hasHiddenChannels {
+                focusedControl = .toggleHiddenVisibility
+            }
+        case .down:
+            if focusedControl == .toggleHiddenVisibility || focusedControl == .close {
+                focusedControl = preferredRowFocusTarget() ?? .close
+            }
+        case .left:
+            if focusedControl == .close, hasHiddenChannels {
+                focusedControl = .toggleHiddenVisibility
+            }
+        case .right:
+            if focusedControl == .toggleHiddenVisibility {
+                focusedControl = .close
+            }
+        default:
+            break
+        }
+    }
+
+    private func applyDefaultFocusIfNeeded() {
+        guard focusedControl == nil else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard focusedControl == nil else { return }
+            if hasHiddenChannels {
+                focusedControl = .toggleHiddenVisibility
+            } else {
+                focusedControl = preferredRowFocusTarget() ?? .close
+            }
+        }
+    }
+
+    private func refreshFocusAfterChannelListChange() {
+        guard let focusedControl else {
+            applyDefaultFocusIfNeeded()
+            return
+        }
+
+        switch focusedControl {
+        case .channel(let channelID), .favorite(let channelID), .hidden(let channelID):
+            guard displayedChannelIDs.contains(channelID) else {
+                self.focusedControl = preferredRowFocusTarget(excluding: channelID) ?? preferredHeaderFocusTarget
+                return
+            }
+        case .toggleHiddenVisibility:
+            guard hasHiddenChannels else {
+                self.focusedControl = preferredRowFocusTarget() ?? .close
+                return
+            }
+        default:
+            break
+        }
+    }
+
+    private func preferredRowFocusTarget(excluding excludedChannelID: String? = nil) -> FocusTarget? {
+        if let lastFocusedChannelControl,
+           isValidRowFocusTarget(lastFocusedChannelControl, excluding: excludedChannelID) {
+            return lastFocusedChannelControl
+        }
+
+        if let currentChannelID = player.currentChannel?.id,
+           currentChannelID != excludedChannelID,
+           displayedChannelIDs.contains(currentChannelID) {
+            return .channel(currentChannelID)
+        }
+
+        guard let fallbackChannelID = displayedChannelIDs.first(where: { $0 != excludedChannelID }) else {
+            return nil
+        }
+        return .channel(fallbackChannelID)
+    }
+
+    private func isTopRowFocusTarget(_ target: FocusTarget) -> Bool {
+        guard let firstChannelID = displayedChannelIDs.first else { return false }
+        switch target {
+        case .channel(let channelID), .favorite(let channelID), .hidden(let channelID):
+            return channelID == firstChannelID
+        default:
+            return false
+        }
+    }
+
+    private func isChannelRowFocusTarget(_ target: FocusTarget) -> Bool {
+        switch target {
+        case .channel, .favorite, .hidden:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func isValidRowFocusTarget(_ target: FocusTarget, excluding excludedChannelID: String? = nil) -> Bool {
+        switch target {
+        case .channel(let channelID), .favorite(let channelID), .hidden(let channelID):
+            return channelID != excludedChannelID && displayedChannelIDs.contains(channelID)
+        default:
+            return false
+        }
+    }
+    #endif
 }
 
 private struct TimelineSegment: Identifiable {

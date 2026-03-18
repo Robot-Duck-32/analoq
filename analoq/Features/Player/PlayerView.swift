@@ -256,7 +256,7 @@ struct NowPlayingOverlay: View {
                 }
 
                 if let next = visibleNextItem {
-                    Divider().overlay(TVTheme.border.opacity(0.9))
+                    TVInlineSeparator()
                     HStack(spacing: 6) {
                         Text(L10n.tr("player.up_next"))
                             .font(.caption)
@@ -322,7 +322,7 @@ struct LiveInfoBar: View {
             }
 
             if let next = player.nextItem {
-                Divider().overlay(TVTheme.border.opacity(0.9))
+                TVInlineSeparator()
                 HStack(spacing: 8) {
                     Text(L10n.tr("player.up_next"))
                         .font(.caption)
@@ -337,6 +337,15 @@ struct LiveInfoBar: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .tvSurface(cornerRadius: 14)
+    }
+}
+
+private struct TVInlineSeparator: View {
+    var body: some View {
+        Rectangle()
+            .fill(TVTheme.border.opacity(0.9))
+            .frame(maxWidth: .infinity)
+            .frame(height: 1)
     }
 }
 
