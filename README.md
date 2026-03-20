@@ -58,11 +58,11 @@ If you want to run the app on your own Apple TV hardware, choose your own team i
 
 ### Playback Overlay
 
-![Playback Overlay](docs/screenshots/playback-overlay.png)
+![Playback Overlay](docs/screenshots/playback-overlay-20260320.png)
 
 ### Guide Overlay
 
-![Guide Overlay](docs/screenshots/guide-overlay.png)
+![Guide Overlay](docs/screenshots/guide-overlay-20260320.png)
 
 ## Repository Scope
 
