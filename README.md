@@ -6,7 +6,7 @@ Instead of browsing posters and folders, analoq takes the collections you alread
 
 > [!IMPORTANT]
 > Full Disclosure: This is a 100% 'vibe-coded' project.
-> The goal is to keep it free and open-source.
+> The goal is to have a free and open-source alternative for Apple TV.
 
 ## Highlights
 
@@ -20,19 +20,16 @@ Instead of browsing posters and folders, analoq takes the collections you alread
 
 ## Install Options
 
+There are two ways to install the app on Apple TV:
+
 - Build and run directly from Xcode on Apple TV
+- Sideload the app to your own Apple TV using tools like ATVLoadly
 
 ## Platform
 
 - tvOS 17+
 - SwiftUI
 - Apple TV
-
-## Development
-
-Open `analoq.xcodeproj` in Xcode and build the `analoq` target.
-
-If you want to run the app on your own Apple TV hardware, choose your own team in Xcode signing settings before building.
 
 ## How To Use
 
@@ -63,12 +60,3 @@ If you want to run the app on your own Apple TV hardware, choose your own team i
 ### Guide Overlay
 
 ![Guide Overlay](docs/screenshots/guide-overlay-20260320.png)
-
-## Repository Scope
-
-This repository is intentionally kept lean and focused on the product itself:
-
-- app source code
-- Xcode project files
-- tvOS assets
-- core documentation
