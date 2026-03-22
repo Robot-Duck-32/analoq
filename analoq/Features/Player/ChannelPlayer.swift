@@ -31,6 +31,8 @@ class ChannelPlayer: ObservableObject {
     private var recoveryAttemptCount = 0
     private let maxRecoveryAttempts = 3
     private var nextStreamPreference: StreamRecoveryPreference = .defaultPath
+    private var lifecycleSuspendedChannel: AnaloqChannel?
+    private var activeStreamSessionID: String?
 
     init(service: CollectionService, streamService: StreamService) {
         self.service = service
@@ -70,6 +72,7 @@ class ChannelPlayer: ObservableObject {
         loadedItemExpectedEndDate = nil
         resetPlaybackProgressTracking()
         stopProgressTimer()
+        releaseCurrentStreamSession()
         player.pause()
         player.replaceCurrentItem(with: nil)
         var tunedChannel = channel
@@ -105,6 +108,7 @@ class ChannelPlayer: ObservableObject {
             if error is CancellationError || Task.isCancelled || activeTuneID != tuneID {
                 return
             }
+            releaseCurrentStreamSession()
             playbackError = error.localizedDescription
             isLoading = false
             isAutoAdvancing = false
@@ -112,8 +116,10 @@ class ChannelPlayer: ObservableObject {
     }
 
     func stopPlayback() {
+        lifecycleSuspendedChannel = nil
         activeTuneID = UUID()
         stopProgressTimer()
+        releaseCurrentStreamSession()
         if let obs = endObserver { NotificationCenter.default.removeObserver(obs) }
         endObserver = nil
         player.pause()
@@ -129,6 +135,35 @@ class ChannelPlayer: ObservableObject {
         currentChannel = nil
         isLoading = false
         playbackError = nil
+    }
+
+    func suspendForLifecycle() {
+        guard lifecycleSuspendedChannel == nil else { return }
+        guard let channel = currentChannel else { return }
+        guard isLoading || currentItem != nil || player.currentItem != nil else { return }
+
+        lifecycleSuspendedChannel = channel
+        activeTuneID = UUID()
+        stopProgressTimer()
+        releaseCurrentStreamSession()
+        if let obs = endObserver { NotificationCenter.default.removeObserver(obs) }
+        endObserver = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        loadedScheduledItem = nil
+        loadedItemExpectedEndDate = nil
+        isAutoAdvancing = false
+        isLoading = false
+        playbackError = nil
+        currentItem = nil
+        nextItem = nil
+        resetPlaybackProgressTracking()
+    }
+
+    func resumeAfterLifecycleSuspendIfNeeded() async {
+        guard let channel = lifecycleSuspendedChannel else { return }
+        lifecycleSuspendedChannel = nil
+        await startPlayback(for: channel, force: true, referenceDate: .now, autoAdvance: false)
     }
 
     private func observePlaybackStalls() {
@@ -326,6 +361,14 @@ class ChannelPlayer: ObservableObject {
 
     private func stopProgressTimer() { progressTimer?.invalidate(); progressTimer = nil; progress = 0 }
 
+    private func releaseCurrentStreamSession() {
+        guard let sessionID = activeStreamSessionID else { return }
+        activeStreamSessionID = nil
+        Task {
+            await streamService.stopSession(sessionID: sessionID)
+        }
+    }
+
     private func playScheduledItem(
         _ scheduled: ScheduledItem,
         in channel: AnaloqChannel,
@@ -334,12 +377,14 @@ class ChannelPlayer: ObservableObject {
         var stream = try await initialStreamResult(for: scheduled.item, playbackOffset: scheduled.startOffset)
         guard activeTuneID == tuneID else { throw CancellationError() }
         streamMode = stream.mode
+        activeStreamSessionID = stream.sessionID
 
         let playerItem: AVPlayerItem
         do {
             playerItem = try await createReadyPlayerItem(from: stream)
         } catch {
             guard activeTuneID == tuneID else { throw CancellationError() }
+            releaseCurrentStreamSession()
             stream = try await fallbackStreamResult(
                 from: stream,
                 for: scheduled.item,
@@ -347,10 +392,14 @@ class ChannelPlayer: ObservableObject {
             )
             guard activeTuneID == tuneID else { throw CancellationError() }
             streamMode = stream.mode
+            activeStreamSessionID = stream.sessionID
             playerItem = try await createReadyPlayerItem(from: stream)
         }
 
-        guard activeTuneID == tuneID else { throw CancellationError() }
+        guard activeTuneID == tuneID else {
+            releaseCurrentStreamSession()
+            throw CancellationError()
+        }
         loadedScheduledItem = scheduled
         observeItemEnd(for: playerItem, scheduled: scheduled, in: channel, tuneID: tuneID)
 
@@ -498,7 +547,7 @@ class ChannelPlayer: ObservableObject {
         let asset = AVURLAsset(url: stream.url, options: ["AVURLAssetHTTPHeaderFieldsKey": stream.headers])
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = stream.mode.isDirectPath ? 1.5 : 2.5
-        item.canUseNetworkResourcesForLiveStreamingWhilePaused = true
+        item.canUseNetworkResourcesForLiveStreamingWhilePaused = false
         player.replaceCurrentItem(with: item)
         let timeout: Duration = stream.mode.isDirectPath ? .seconds(8) : .seconds(14)
         try await waitUntilReady(item, timeout: timeout)

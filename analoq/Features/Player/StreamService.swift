@@ -30,47 +30,58 @@ actor StreamService {
         let headers = serviceHeaders()
         let shouldTranscode = preferTranscode || forceTranscodeByDefault
         if preferDirect {
-            return StreamResult(
-                url: try universalPlaybackURL(
-                    item: item,
-                    directPlay: true,
-                    videoQuality: .copy,
-                    playbackOffset: playbackOffset
-                ),
-                mode: .directPlay,
-                headers: headers
-            )
-        }
-        if shouldTranscode {
-            let quality = preferredQuality ?? preferredTranscodeQuality()
-            return StreamResult(
-                url: try universalPlaybackURL(
-                    item: item,
-                    directPlay: false,
-                    videoQuality: quality,
-                    playbackOffset: playbackOffset
-                ),
-                mode: .transcode(quality: quality),
-                headers: headers
-            )
-        }
-
-        return StreamResult(
-            url: try universalPlaybackURL(
+            let playback = try universalPlaybackURL(
                 item: item,
                 directPlay: true,
                 videoQuality: .copy,
                 playbackOffset: playbackOffset
-            ),
+            )
+            return StreamResult(
+                url: playback.url,
+                mode: .directPlay,
+                headers: headers,
+                sessionID: playback.sessionID
+            )
+        }
+        if shouldTranscode {
+            let quality = preferredQuality ?? preferredTranscodeQuality()
+            let playback = try universalPlaybackURL(
+                item: item,
+                directPlay: false,
+                videoQuality: quality,
+                playbackOffset: playbackOffset
+            )
+            return StreamResult(
+                url: playback.url,
+                mode: .transcode(quality: quality),
+                headers: headers,
+                sessionID: playback.sessionID
+            )
+        }
+
+        let playback = try universalPlaybackURL(
+            item: item,
+            directPlay: true,
+            videoQuality: .copy,
+            playbackOffset: playbackOffset
+        )
+        return StreamResult(
+            url: playback.url,
             mode: .directPlay,
-            headers: headers
+            headers: headers,
+            sessionID: playback.sessionID
         )
     }
 
     func stopSession(sessionID: String) async {
-        guard let url = URL(string: serverURL + "/video/:/transcode/universal/stop") else { return }
+        var components = URLComponents(string: serverURL + "/video/:/transcode/universal/stop")
+        components?.queryItems = [
+            URLQueryItem(name: "session", value: sessionID),
+            URLQueryItem(name: "transcodeSessionId", value: sessionID)
+        ]
+        guard let url = components?.url else { return }
         var request = URLRequest(url: url)
-        request.setValue(token, forHTTPHeaderField: AnaloqProtocol.tokenHeader)
+        serviceHeaders().forEach { request.setValue($1, forHTTPHeaderField: $0) }
         _ = try? await URLSession.shared.data(for: request)
     }
 
@@ -79,12 +90,14 @@ actor StreamService {
         directPlay: Bool,
         videoQuality: VideoQuality,
         playbackOffset: TimeInterval
-    ) throws -> URL {
+    ) throws -> PlaybackURL {
         let playbackProfile = playbackProfile(directPlay: directPlay, videoQuality: videoQuality)
         let normalizedOffset = max(playbackOffset, 0)
+        let sessionID = UUID().uuidString.lowercased()
         var components = URLComponents(string: serverURL + "/video/:/transcode/universal/start.m3u8")!
         components.queryItems = [
-            URLQueryItem(name: "session",                   value: UUID().uuidString.lowercased()),
+            URLQueryItem(name: "session",                   value: sessionID),
+            URLQueryItem(name: "transcodeSessionId",        value: sessionID),
             URLQueryItem(name: AnaloqProtocol.tokenHeader,            value: token),
             URLQueryItem(name: AnaloqProtocol.clientIdentifierHeader, value: clientID),
             URLQueryItem(name: AnaloqProtocol.productHeader,          value: "analoq"),
@@ -106,7 +119,7 @@ actor StreamService {
             URLQueryItem(name: "subtitles",                 value: "burn"),
         ]
         guard let url = components.url else { throw StreamError.transcodeSessionFailed }
-        return url
+        return PlaybackURL(url: url, sessionID: sessionID)
     }
 
     private func metadataPath(for item: AnaloqItem) -> String {
@@ -154,6 +167,7 @@ struct StreamResult {
     let url: URL
     let mode: StreamMode
     let headers: [String: String]
+    let sessionID: String
 }
 
 enum StreamMode {
@@ -255,4 +269,9 @@ private struct PlaybackProfile {
     let videoQuality: VideoQuality
     let resolution: String
     let maxBitrate: Int
+}
+
+private struct PlaybackURL {
+    let url: URL
+    let sessionID: String
 }
